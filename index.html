@@ -1255,6 +1255,71 @@
   .select-btn { font-size: 1em; padding: 14px 10px; }
   /* You can add more tweaks here for small screens as needed */
 }
+@media (max-width: 600px) {
+  .dashboard-header, .user-dashboard-header {
+    flex-direction: column;
+    padding: 14px 2vw;
+    gap: 12px;
+    max-width: 98vw;
+    font-size: 1rem;
+    margin-bottom: 16px;
+    margin-top: 12px;
+    border-radius: 12px;
+  }
+  .dashboard-nav, .user-dashboard-menu {
+    flex-direction: column;
+    gap: 12px;
+    padding: 0 0 6px 0;
+    align-items: stretch;
+  }
+  .dashboard-nav-btn, .user-dashboard-menu button {
+    font-size: .98rem;
+    padding: 12px;
+    border-radius: 8px;
+    width: 100%;
+    min-width: 0;
+    text-align: left;
+  }
+  .dashboard, #adminDashboard, #userDashboard {
+    padding: 2vw;
+    min-width: 98vw;
+    box-sizing: border-box;
+    overflow-x: auto;
+  }
+  .user-dashboard-main {
+    padding: 10px 6vw 14px 6vw;
+    min-width: 98vw;
+    border-radius: 8px;
+  }
+  .admin-report-card, .requirements-card {
+    max-width: 98vw;
+    padding: 1em .4em;
+    border-radius: 10px;
+  }
+  .ojt-admin-table th, .ojt-admin-table td {
+    padding: 10px 3px;
+    font-size: .93em;
+  }
+  .enroll-student-container {
+    max-width: 98vw;
+    padding: 12px 4vw;
+    border-radius: 14px;
+  }
+  .student-list-scroll-container {
+    max-width: 98vw;
+    padding-bottom: 32px;
+  }
+}
+@media (max-width: 400px) {
+  .dashboard-header, .user-dashboard-header {
+    font-size: .97rem;
+    padding: 8px 1vw;
+  }
+  .dashboard-nav-btn, .user-dashboard-menu button {
+    font-size: .92rem;
+    padding: 8px;
+  }
+}
 
   </style>
 </head>
@@ -5498,6 +5563,14 @@ function clearEditClassModal() {
     if (window.innerWidth <= 415) {
       document.documentElement.style.zoom = "0.97";
     }
+  }
+})();
+
+(function() {
+  var w = window.innerWidth;
+  if (w <= 600) {
+    document.body.style.fontSize = "1em";
+    document.documentElement.style.zoom = w <= 415 ? "0.96" : "1";
   }
 })();
 
