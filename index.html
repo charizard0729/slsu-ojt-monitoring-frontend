@@ -1242,6 +1242,19 @@
   color: #e74c3c;
   border-bottom: none;
 }
+@media (max-width: 480px) {
+  body { font-size: 0.96em; padding: 0; }
+  .banner-with-logo {
+    flex-direction: column;
+    font-size: 1.06rem;
+    padding: 14px 2vw;
+    gap: 10px;
+  }
+  .banner-logo { width: 50px; height: 50px; }
+  .btn-group { gap: 10px; }
+  .select-btn { font-size: 1em; padding: 14px 10px; }
+  /* You can add more tweaks here for small screens as needed */
+}
 
   </style>
 </head>
@@ -5478,6 +5491,16 @@ function clearEditClassModal() {
   document.getElementById('editClassModal').style.display = 'none';
   document.getElementById('editClassModal').dataset.classId = '';
 }
+
+(function() {
+  if (window.innerWidth <= 600) {
+    document.body.style.fontSize = "1.05em";
+    if (window.innerWidth <= 415) {
+      document.documentElement.style.zoom = "0.97";
+    }
+  }
+})();
+
 
 window.editClass = editClass;
 window.saveClassEdits = saveClassEdits;
