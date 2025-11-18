@@ -1242,84 +1242,6 @@
   color: #e74c3c;
   border-bottom: none;
 }
-@media (max-width: 480px) {
-  body { font-size: 0.96em; padding: 0; }
-  .banner-with-logo {
-    flex-direction: column;
-    font-size: 1.06rem;
-    padding: 14px 2vw;
-    gap: 10px;
-  }
-  .banner-logo { width: 50px; height: 50px; }
-  .btn-group { gap: 10px; }
-  .select-btn { font-size: 1em; padding: 14px 10px; }
-  /* You can add more tweaks here for small screens as needed */
-}
-@media (max-width: 600px) {
-  .dashboard-header, .user-dashboard-header {
-    flex-direction: column;
-    padding: 14px 2vw;
-    gap: 12px;
-    max-width: 98vw;
-    font-size: 1rem;
-    margin-bottom: 16px;
-    margin-top: 12px;
-    border-radius: 12px;
-  }
-  .dashboard-nav, .user-dashboard-menu {
-    flex-direction: column;
-    gap: 12px;
-    padding: 0 0 6px 0;
-    align-items: stretch;
-  }
-  .dashboard-nav-btn, .user-dashboard-menu button {
-    font-size: .98rem;
-    padding: 12px;
-    border-radius: 8px;
-    width: 100%;
-    min-width: 0;
-    text-align: left;
-  }
-  .dashboard, #adminDashboard, #userDashboard {
-    padding: 2vw;
-    min-width: 98vw;
-    box-sizing: border-box;
-    overflow-x: auto;
-  }
-  .user-dashboard-main {
-    padding: 10px 6vw 14px 6vw;
-    min-width: 98vw;
-    border-radius: 8px;
-  }
-  .admin-report-card, .requirements-card {
-    max-width: 98vw;
-    padding: 1em .4em;
-    border-radius: 10px;
-  }
-  .ojt-admin-table th, .ojt-admin-table td {
-    padding: 10px 3px;
-    font-size: .93em;
-  }
-  .enroll-student-container {
-    max-width: 98vw;
-    padding: 12px 4vw;
-    border-radius: 14px;
-  }
-  .student-list-scroll-container {
-    max-width: 98vw;
-    padding-bottom: 32px;
-  }
-}
-@media (max-width: 400px) {
-  .dashboard-header, .user-dashboard-header {
-    font-size: .97rem;
-    padding: 8px 1vw;
-  }
-  .dashboard-nav-btn, .user-dashboard-menu button {
-    font-size: .92rem;
-    padding: 8px;
-  }
-}
 
   </style>
 </head>
@@ -3065,7 +2987,7 @@ async function renderAdminRequirements() {
       expectedTypes.forEach(t => {
         const filename = reqs[t] || null;
         if (filename) {
-          const url = `http://localhost:4000/requirements/${filename}`;
+          const url = `https://slsu-ojt-monitoring-system-1.onrender.com/api/requirements/file/${encodeURIComponent(filename)}`;
           html += `<td style="text-align:center;"><a href="${url}" target="_blank" style="color:#2299ee;">View</a></td>`;
         } else {
           html += `<td style="text-align:center;color:#ccc;">-</td>`;
@@ -4413,7 +4335,7 @@ async function renderRequirementsStatus() {
   reqTypes.forEach(({id, label}) => {
     const file = files.find(f => f.type.toLowerCase() === id.toLowerCase());
     if (file) {
-      const fileUrl = `http://localhost:4000/requirements/${file.filename}`;
+      const fileUrl = `https://slsu-ojt-monitoring-system-1.onrender.com/api/requirements/file/${encodeURIComponent(file.id)}`;
       html += `<div style="margin-bottom:6px;">
         <input type="checkbox" checked readonly style="margin-right:6px;">
         <b>${label}</b>
@@ -5556,24 +5478,6 @@ function clearEditClassModal() {
   document.getElementById('editClassModal').style.display = 'none';
   document.getElementById('editClassModal').dataset.classId = '';
 }
-
-(function() {
-  if (window.innerWidth <= 600) {
-    document.body.style.fontSize = "1.05em";
-    if (window.innerWidth <= 415) {
-      document.documentElement.style.zoom = "0.97";
-    }
-  }
-})();
-
-(function() {
-  var w = window.innerWidth;
-  if (w <= 600) {
-    document.body.style.fontSize = "1em";
-    document.documentElement.style.zoom = w <= 415 ? "0.96" : "1";
-  }
-})();
-
 
 window.editClass = editClass;
 window.saveClassEdits = saveClassEdits;
