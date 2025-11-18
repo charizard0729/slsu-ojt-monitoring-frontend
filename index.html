@@ -2987,7 +2987,7 @@ async function renderAdminRequirements() {
       expectedTypes.forEach(t => {
         const filename = reqs[t] || null;
         if (filename) {
-          const url = `https://slsu-ojt-monitoring-system-1.onrender.com/api/requirements/file/${encodeURIComponent(filename)}`;
+          const url = `https://slsu-ojt-monitoring-system-1.onrender.com/requirements/${filename}`;
           html += `<td style="text-align:center;"><a href="${url}" target="_blank" style="color:#2299ee;">View</a></td>`;
         } else {
           html += `<td style="text-align:center;color:#ccc;">-</td>`;
@@ -4335,7 +4335,7 @@ async function renderRequirementsStatus() {
   reqTypes.forEach(({id, label}) => {
     const file = files.find(f => f.type.toLowerCase() === id.toLowerCase());
     if (file) {
-      const fileUrl = `https://slsu-ojt-monitoring-system-1.onrender.com/api/requirements/file/${encodeURIComponent(file.id)}`;
+      const fileUrl = `https://slsu-ojt-monitoring-system-1.onrender.com/requirements/${file.filename}`;
       html += `<div style="margin-bottom:6px;">
         <input type="checkbox" checked readonly style="margin-right:6px;">
         <b>${label}</b>
