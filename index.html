@@ -1430,10 +1430,11 @@
   <input type="text" id="newAdminName" placeholder="Full Name" required>
   <input type="email" id="newAdminEmail" placeholder="Institutional Email" required>
   <div style="position:relative;">
-    <input type="password" id="newAdminPass" placeholder="Password" required style="padding-right:12px;">
+    <input id="newAdminPass" type="password" placeholder="Password" required>
+<div id="newAdminFeedback" style="min-height:18px;font-size:13px;margin-top:6px;color:#b00020;"></div>
     <span id="toggleNewAdminPassword" onclick="toggleNewAdminPassword()" style="
       position:absolute; 
-      top:50%; 
+      top:39%; 
       right:12px; 
       transform:translateY(-50%);
       cursor:pointer;
@@ -1725,7 +1726,7 @@
             <span>Status: <b id="userTimedInStatus2" style="color:#e67e22;">-</b></span>
           </div>
           <button id="clockInBtn" onclick="startClockInProcess()" class="clock-btn" style="background:#25a55f;color:#fff;"><i class="fas fa-sign-in-alt"></i> Clock In</button>
-          <button id="clockOutBtn" onclick="clockOut()" class="clock-btn" style="background:#e74c3c;color:#fff;display:none;"><i class="fas fa-sign-out-alt"></i> Clock Out</button>
+          <button id="clockOutBtn" onclick="startClockOutProcess()" class="clock-btn" style="background:#e74c3c;color:#fff;display:none;"><i class="fas fa-sign-out-alt"></i> Clock Out</button>
           <div id="clockMessage" style="margin-top:18px;"></div>
           <div id="lastRecord" style="margin-top:20px;color:#18684b;font-size:1.07rem;"></div>
           <div id="webcamSection" style="display:none; margin-bottom:15px;">
@@ -2304,12 +2305,50 @@ function logout() {
 
 async function createAdmin(e) {
   e.preventDefault();
-  const name = document.getElementById("newAdminName").value.trim().split(" ");
-  const first = name[0];
-  const last = name.slice(1).join(" ") || "";
+
+  const nameParts = document.getElementById("newAdminName").value.trim().split(" ").filter(Boolean);
+  const first = nameParts[0] || "";
+  const last = nameParts.slice(1).join(" ") || "";
   const email = document.getElementById("newAdminEmail").value.trim();
-  const password = document.getElementById("newAdminPass").value.trim();
-  const securityCode = document.getElementById("facultyCode").value.trim();
+  const password = document.getElementById("newAdminPass").value; // keep exact chars
+  const securityCode = document.getElementById("facultyCode")?.value.trim() || "";
+
+  const feedbackEl = document.getElementById("newAdminFeedback");
+  const pwdRegex = /^(?=.*[^A-Za-z0-9]).{6,}$/; // at least 6 chars and at least one special char
+
+  // Validate password before attempting to create account
+  if (!pwdRegex.test(password)) {
+    const msg =
+      (password.length < 6)
+        ? "Password NOT accepted: must be at least 6 characters."
+        : "Password NOT accepted: must include at least one special character (e.g. !@#$%).";
+
+    if (feedbackEl) {
+      feedbackEl.textContent = msg;
+      feedbackEl.style.color = "#b00020";
+      feedbackEl.scrollIntoView({ behavior: "smooth", block: "center" });
+    } else {
+      alert(msg);
+    }
+
+    document.getElementById("newAdminPass")?.focus();
+    return; // stop — do not create account
+  }
+
+  // Clear any previous feedback
+  if (feedbackEl) {
+    feedbackEl.textContent = "";
+  }
+
+  // Disable submit button to prevent duplicate submissions (if available)
+  const form = e.target;
+  const submitBtn = form?.querySelector('button[type="submit"]') || document.querySelector('button[type="submit"]');
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.dataset.origText = submitBtn.textContent;
+    submitBtn.textContent = "Creating...";
+    submitBtn.style.opacity = "0.7";
+  }
 
   try {
     const res = await fetch("https://slsu-ojt-monitoring-system-1.onrender.com/api/admins", {
@@ -2317,15 +2356,45 @@ async function createAdmin(e) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ first, last, email, password, securityCode })
     });
-    const data = await res.json();
+
+    let data = {};
+    try { data = await res.json(); } catch (_) { data = {}; }
+
     if (res.ok) {
-      alert("Admin account created successfully!");
-      goBackToAdminLogin();
+      const successMsg = "✅ Admin account created successfully!";
+      if (feedbackEl) {
+        feedbackEl.textContent = successMsg;
+        feedbackEl.style.color = "#0b7b3a";
+      } else {
+        alert(successMsg);
+      }
+      // optionally reset form
+      form?.reset?.();
+      // call your navigation function if present
+      if (typeof goBackToAdminLogin === "function") goBackToAdminLogin();
     } else {
-      alert("Error: " + data.error);
+      const errMsg = data?.error || data?.message || `Server returned ${res.status}`;
+      if (feedbackEl) {
+        feedbackEl.textContent = "Error: " + errMsg;
+        feedbackEl.style.color = "#b00020";
+      } else {
+        alert("Error: " + errMsg);
+      }
     }
   } catch (err) {
-    alert("Network error: " + err.message);
+    const netMsg = "Network error: " + (err?.message || err);
+    if (feedbackEl) {
+      feedbackEl.textContent = netMsg;
+      feedbackEl.style.color = "#b00020";
+    } else {
+      alert(netMsg);
+    }
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = submitBtn.dataset.origText || "Create Account";
+      submitBtn.style.opacity = "";
+    }
   }
 }
 
@@ -3893,15 +3962,253 @@ async function updateClockButtons() {
   }
 }
 
+// Replace your existing clockOut() with this implementation
 async function clockOut() {
+  // Ensure function that checks if user is timed in exists
+  if (typeof getUserTimedInStatus !== 'function') {
+    console.warn('getUserTimedInStatus() not defined — defaulting to true');
+  }
+  const timedIn = typeof getUserTimedInStatus === 'function'
+    ? await getUserTimedInStatus()
+    : true;
+
+  if (!timedIn) {
+    document.getElementById('clockMessage').innerText = "Already timed out!";
+    return;
+  }
+
+  const webcamSection = document.getElementById('webcamSection');
+  const video = document.getElementById('webcamVideo');
+  const canvas = document.getElementById('webcamCanvas');
+  const capturedImg = document.getElementById('capturedPhoto');
+  const message = document.getElementById('clockMessage');
+
+  // Helper to stop camera stream
+  function stopCameraStream() {
+    try {
+      if (video && video.srcObject) {
+        video.srcObject.getTracks().forEach(t => t.stop());
+        video.srcObject = null;
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  // Show webcam UI
+  webcamSection.style.display = 'block';
+  capturedImg.style.display = 'none';
+  message.innerText = '📸 Preparing camera...';
+
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: true });
+  } catch (err) {
+    console.error('Camera access denied or not available', err);
+    message.innerText = '❌ Unable to access camera. Recording time-out without photo.';
+    // fallback: record timeout without photo
+    await saveClockOutLog(null).catch(e => console.error(e));
+    renderLastClockRecord?.();
+    renderClockTabRecords?.();
+    // hide webcam UI if it was shown
+    webcamSection.style.display = 'none';
+    return;
+  }
+
+  // Start video
+  video.srcObject = stream;
+  try { await video.play(); } catch (e) { /* ignore */ }
+
+  // Give user a short countdown before capture
+  let countdown = 3;
+  message.innerText = `📸 Capturing photo in ${countdown}...`;
+  const countdownInterval = setInterval(() => {
+    countdown--;
+    if (countdown > 0) {
+      message.innerText = `📸 Capturing photo in ${countdown}...`;
+    }
+  }, 1000);
+
+  // After 3s capture frame
+  setTimeout(async () => {
+    clearInterval(countdownInterval);
+
+    // draw video frame to canvas (reduce size to save storage)
+    const ctx = canvas.getContext('2d');
+    const w = 320; // desired width
+    const h = Math.round((video.videoHeight / video.videoWidth) * w) || 240;
+    canvas.width = w;
+    canvas.height = h;
+    ctx.drawImage(video, 0, 0, w, h);
+
+    // get jpeg data (quality 0.7)
+    const imageData = canvas.toDataURL('image/jpeg', 0.7);
+
+    // show captured preview
+    capturedImg.src = imageData;
+    capturedImg.style.display = 'block';
+    message.innerText = `✅ Photo captured. Saving time-out...`;
+
+    // stop camera
+    stopCameraStream();
+    webcamSection.style.display = 'none';
+
+    // Save clock-out with captured image (your backend helper)
+    try {
+      if (typeof saveClockOutLog === 'function') {
+        await saveClockOutLog(imageData);
+      } else {
+        // fallback localStorage save if no backend helper exists
+        const userId = localStorage.getItem('currentUserId') || 'guest';
+        const logs = JSON.parse(localStorage.getItem('timeLogs') || '{}');
+        if (!logs[userId]) logs[userId] = [];
+        const now = new Date();
+        logs[userId].push({ type: 'Time Out', datetime: now.toLocaleString(), image: imageData });
+        localStorage.setItem('timeLogs', JSON.stringify(logs));
+      }
+
+      message.innerText = 'Clocked out successfully!';
+      renderLastClockRecord?.();
+      renderClockTabRecords?.();
+    } catch (saveErr) {
+      console.error('Failed to save clock-out', saveErr);
+      message.innerText = '❌ Failed to save time-out. See console.';
+    }
+  }, 3000); // 3s
+}
+
+async function startClockOutProcess() {
+  // Ensure user is currently timed in
   if (!(await getUserTimedInStatus())) {
     document.getElementById('clockMessage').innerText = "Already timed out!";
     return;
   }
-  await saveClockOutLog();
-  document.getElementById('clockMessage').innerText = "Clocked out successfully!";
-  renderLastClockRecord();
-  renderClockTabRecords();
+
+  clockActionMode = 'out';
+  document.getElementById('webcamSection').style.display = 'block';
+  document.getElementById('clockMessage').innerText = '📸 Clock Out: Please look at the camera. Capture to complete clock out.';
+  // Hide the clockOut button while capturing to avoid duplicate actions
+  document.getElementById('clockOutBtn').style.display = 'none';
+
+  // update capture button label
+  const capBtn = document.querySelector('#webcamSection button');
+  if (capBtn) capBtn.textContent = 'Capture & Clock Out';
+
+  // Start webcam
+  navigator.mediaDevices.getUserMedia({ video: true })
+    .then(stream => {
+      webcamStream = stream;
+      const video = document.getElementById('webcamVideo');
+      video.srcObject = stream;
+    })
+    .catch(err => {
+      alert('Could not access camera: ' + err);
+      document.getElementById('webcamSection').style.display = 'none';
+      // restore button visibility
+      document.getElementById('clockOutBtn').style.display = 'inline-block';
+    });
+}
+
+// Unified capture handler used for both Clock In and Clock Out
+// (replaces previous capturePhoto implementation)
+async function capturePhoto() {
+  const video = document.getElementById('webcamVideo');
+  const canvas = document.getElementById('webcamCanvas');
+  const img = document.getElementById('capturedPhoto');
+
+  // draw current frame
+  canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+  const photoData = canvas.toDataURL('image/png');
+  img.src = photoData;
+  img.style.display = 'block';
+
+  // Stop the webcam stream
+  if (webcamStream) {
+    webcamStream.getTracks().forEach(track => track.stop());
+  }
+  document.getElementById('webcamSection').style.display = 'none';
+
+  if (clockActionMode === 'in') {
+    // Clock In flow
+    try {
+      // Optionally show immediate feedback
+      document.getElementById('clockMessage').innerHTML = "<span style='color:#2196f3;font-weight:600;'>Saving Time In...</span>";
+      // call existing backend helper (posts new ojtlog with photo)
+      await clockInBackend(photoData);
+      // update UI
+      localStorage.setItem("userTimedIn", "true");
+      document.getElementById('userTimedInStatus').innerText = "Timed In";
+      document.getElementById('userTimedInStatus2').innerText = "Timed In";
+      document.getElementById('clockOutBtn').style.display = "inline-block";
+      document.getElementById('clockInBtn').style.display = "none";
+      document.getElementById('clockMessage').innerHTML = "<span style='color:#25a55f;font-weight:600;'>Time In recorded.</span>";
+      renderLastClockRecord();
+      renderClockTabRecords();
+    } catch (err) {
+      console.error('Clock-in save failed', err);
+      alert('Failed to save time in. Please try again.');
+      document.getElementById('clockInBtn').style.display = 'inline-block';
+      document.getElementById('clockMessage').innerText = '';
+    }
+  } else if (clockActionMode === 'out') {
+    // Clock Out flow
+    try {
+      document.getElementById('clockMessage').innerHTML = "<span style='color:#2196f3;font-weight:600;'>Saving Time Out...</span>";
+      // Call existing helper that updates latest log clockOut
+      const ok = await clockOutBackend();
+      if (ok) {
+        // store photo locally (optional) so UI can show it even if backend doesn't save it
+        try {
+          const timeStampKey = `lastClockOutPhoto_${localStorage.getItem('currentUserId') || 'guest'}`;
+          localStorage.setItem(timeStampKey, photoData);
+        } catch (e) { /* ignore storage failures */ }
+
+        localStorage.setItem("userTimedIn", "false");
+        document.getElementById('userTimedInStatus').innerText = "Timed Out";
+        document.getElementById('userTimedInStatus2').innerText = "Timed Out";
+        document.getElementById('clockMessage').innerHTML = "<span style='color:#25a55f;font-weight:600;'>Clock Out recorded.</span>";
+        renderLastClockRecord();
+        renderClockTabRecords();
+      } else {
+        throw new Error('Server failed to record clock out');
+      }
+    } catch (err) {
+      console.error('Clock-out save failed', err);
+      alert('Failed to record clock out. Please try again.');
+      // restore the clock out button so user can retry
+      document.getElementById('clockOutBtn').style.display = 'inline-block';
+      document.getElementById('clockMessage').innerText = '';
+    }
+  }
+
+  // reset mode to default 'in' after capture
+  clockActionMode = 'in';
+}
+
+async function clockOutBackend(photoData = null) {
+  const userId = localStorage.getItem("currentUserId");
+  if (!userId) return false;
+
+  // fetch logs to find the last open entry
+  const logs = await getOjtLogs(userId);
+  const lastLog = logs.find(log => log.clockIn && !log.clockOut);
+  if (!lastLog) return false;
+
+  const now = new Date().toISOString();
+
+  // include photo field in the payload if provided (the server's ojtlogs table has 'photo')
+  const payload = { clockOut: now };
+  if (photoData) payload.photo = photoData;
+
+  try {
+    const res = await fetch(`https://slsu-ojt-monitoring-system-1.onrender.com/api/ojtlogs/${lastLog.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    return res.ok;
+  } catch (err) {
+    console.error('clockOutBackend fetch error', err);
+    return false;
+  }
 }
 
 // Update the time
@@ -3932,13 +4239,20 @@ document.addEventListener("DOMContentLoaded", function() {
 });
 
 let webcamStream = null;
+let captureMode = 'in'; 
+let clockActionMode = 'in'; 
 
 function startClockInProcess() {
+  clockActionMode = 'in';
   // Show webcam section
   document.getElementById('webcamSection').style.display = 'block';
   document.getElementById('clockMessage').innerText = '';
   // Hide normal Clock In button to prevent double click
   document.getElementById('clockInBtn').style.display = 'none';
+
+  // adjust capture button label if present
+  const capBtn = document.querySelector('#webcamSection button');
+  if (capBtn) capBtn.textContent = 'Capture Photo';
 
   // Start webcam
   navigator.mediaDevices.getUserMedia({ video: true })
@@ -3954,11 +4268,21 @@ function startClockInProcess() {
     });
 }
 
+
 function capturePhoto() {
   const video = document.getElementById('webcamVideo');
   const canvas = document.getElementById('webcamCanvas');
   const img = document.getElementById('capturedPhoto');
-  canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+
+  try {
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  } catch (err) {
+    console.error('Capture error', err);
+    alert('Failed to capture photo from webcam.');
+    return;
+  }
+
   // Get data URL of the photo
   const photoData = canvas.toDataURL('image/png');
   img.src = photoData;
@@ -3967,21 +4291,58 @@ function capturePhoto() {
   // Stop the webcam stream
   if (webcamStream) {
     webcamStream.getTracks().forEach(track => track.stop());
+    webcamStream = null;
   }
-  document.getElementById('webcamSection').style.display = 'none';
 
-  // Mark the user as Timed In
-  localStorage.setItem("userTimedIn", "true");
-  document.getElementById('userTimedInStatus').innerText = "Timed In";
-  document.getElementById('userTimedInStatus2').innerText = "Timed In";
-  document.getElementById('clockOutBtn').style.display = "inline-block";
-  document.getElementById('clockInBtn').style.display = "none";
-  document.getElementById('clockMessage').innerHTML = "<span style='color:#25a55f;font-weight:600;'>Timed OK</span>";
+  // Hide webcam UI after a tiny delay so the user sees the captured image
+  setTimeout(() => {
+    document.getElementById('webcamSection').style.display = 'none';
+  }, 400);
 
-  // Optionally, save photoData to localStorage or send it to a server
-  // localStorage.setItem("userClockInPhoto", photoData);
-  saveClockInLog(photoData);
-  renderLastClockRecord(); // <-- Add this line
+  if (clockActionMode === 'in') {
+    // Clock In flow (existing behavior)
+    localStorage.setItem("userTimedIn", "true");
+    document.getElementById('userTimedInStatus').innerText = "Timed In";
+    document.getElementById('userTimedInStatus2').innerText = "Timed In";
+    document.getElementById('clockOutBtn').style.display = "inline-block";
+    document.getElementById('clockInBtn').style.display = "none";
+    document.getElementById('clockMessage').innerHTML = "<span style='color:#25a55f;font-weight:600;'>Timed in OK</span>";
+
+    // send to backend
+    saveClockInLog(photoData).then(() => {
+      renderLastClockRecord();
+      renderClockTabRecords();
+    }).catch(err => {
+      console.warn('saveClockInLog failed', err);
+      renderLastClockRecord();
+      renderClockTabRecords();
+    });
+
+  } else if (clockActionMode === 'out') {
+    // Clock Out flow: send photo + clockOut to backend, then update UI
+    document.getElementById('clockMessage').innerText = '⏳ Saving clock out...';
+
+    clockOutBackend(photoData).then(ok => {
+      if (ok) {
+        localStorage.setItem("userTimedIn", "false");
+        document.getElementById('userTimedInStatus').innerText = "Timed Out";
+        document.getElementById('userTimedInStatus2').innerText = "Timed Out";
+        document.getElementById('clockInBtn').style.display = "inline-block";
+        document.getElementById('clockOutBtn').style.display = "none";
+        document.getElementById('clockMessage').innerHTML = "<span style='color:#25a55f;font-weight:600;'>Clocked out successfully!</span>";
+        renderLastClockRecord();
+        renderClockTabRecords();
+      } else {
+        document.getElementById('clockMessage').innerText = "❌ Clock out failed.";
+        // restore clockOut button so user can retry
+        document.getElementById('clockOutBtn').style.display = "inline-block";
+      }
+    }).catch(err => {
+      console.error('clockOutBackend error', err);
+      document.getElementById('clockMessage').innerText = "❌ Network error while clocking out.";
+      document.getElementById('clockOutBtn').style.display = "inline-block";
+    });
+  }
 }
 
 async function renderLastClockRecord() {
@@ -4009,21 +4370,6 @@ async function getOjtLogs(userId = null) {
   const res = await fetch(`https://slsu-ojt-monitoring-system-1.onrender.com/api/ojtlogs/${userId}`);
   if (!res.ok) return [];
   return await res.json();
-}
-
-async function clockOutBackend() {
-  const userId = localStorage.getItem("currentUserId");
-  const logs = await getOjtLogs();
-  // Find the latest log with a clockIn but no clockOut
-  const lastLog = logs.find(log => log.clockIn && !log.clockOut);
-  if (!lastLog) return false;
-  const now = new Date().toISOString();
-  const res = await fetch(`https://slsu-ojt-monitoring-system-1.onrender.com/api/ojtlogs/${lastLog.id}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ clockOut: now })
-  });
-  return res.ok;
 }
 
 async function clockInBackend(photoData) {
@@ -5593,6 +5939,77 @@ function clearEditClassModal() {
   document.getElementById('editClassModal').dataset.classId = '';
 }
 
+/* ======= Safety / fixes: place this near the top of your <script> ======= */
+
+/* 1) Provide a global saveClockInLog so old callers (or capturePhoto) won't throw.
+   This stores a simple clock-in record and returns a Promise for async callers. */
+window.saveClockInLog = function(photoData) {
+  try {
+    const userId = localStorage.getItem('currentUserId') || 'unknown';
+    const logs = JSON.parse(localStorage.getItem('clockLogs') || '{}');
+    if (!logs[userId]) logs[userId] = [];
+    const rec = { type: 'clockIn', photo: photoData || null, time: new Date().toISOString() };
+    logs[userId].unshift(rec);
+    // keep the history limited
+    if (logs[userId].length > 50) logs[userId] = logs[userId].slice(0, 50);
+    localStorage.setItem('clockLogs', JSON.stringify(logs));
+    return Promise.resolve(rec);
+  } catch (err) {
+    console.error('saveClockInLog error', err);
+    return Promise.reject(err);
+  }
+};
+
+/* 2) Defensive attach for optional deptFilter element */
+(function() {
+  const deptFilterEl = document.getElementById('deptFilter');
+  if (deptFilterEl && deptFilterEl.addEventListener) {
+    deptFilterEl.addEventListener('change', renderEnhancedRequirementsTable);
+  } else {
+    // No deptFilter element present — that's okay; log for debugging
+    // console.info('deptFilter element not found; skipping listener attach');
+  }
+})();
+
+/* 3) Consolidate onload initialization (use DOMContentLoaded and guard element access).
+   If you already set up renderDepartments() elsewhere, it's OK — DOMContentLoaded will call them too. */
+document.addEventListener('DOMContentLoaded', function initOnce() {
+  // safe department rendering if function exists
+  if (typeof renderDepartments === 'function') {
+    try { renderDepartments(); } catch (e) { console.warn('renderDepartments failed', e); }
+  }
+
+  // safe log display
+  if (typeof displayLogs === 'function') {
+    try { displayLogs(); } catch (e) { console.warn('displayLogs failed', e); }
+  }
+
+  // set department select safely
+  const deptSelect = document.getElementById('departmentSelect');
+  if (deptSelect) deptSelect.value = localStorage.getItem('userDepartment') || 'BSIT';
+
+  // Show user dashboard safely (guards inside function already)
+  if (typeof showUserSection === 'function') {
+    try { showUserSection('dashboard'); } catch (e) { console.warn('showUserSection failed', e); }
+  }
+
+  // update computed dashboard stats if the elements exist
+  try {
+    const userId = localStorage.getItem('currentUserId');
+    const students = JSON.parse(localStorage.getItem('students') || '[]');
+    const student = students.find(s => s.id === userId);
+    if (student) {
+      const totalHoursEl = document.getElementById('totalHours');
+      if (totalHoursEl) totalHoursEl.textContent = student.completed + ' hrs';
+      const remainingHoursEl = document.getElementById('remainingHours');
+      if (remainingHoursEl) remainingHoursEl.textContent = (student.hours - student.completed) + ' hrs';
+    }
+  } catch (e) {
+    console.warn('dashboard stats update failed', e);
+  }
+});
+/* ======= End safety fixes ======= */
+
 window.editClass = editClass;
 window.saveClassEdits = saveClassEdits;
 window.clearEditClassModal = clearEditClassModal;
@@ -5600,4 +6017,3 @@ window.clearEditClassModal = clearEditClassModal;
   </script>
 </body>
 </html>
-
