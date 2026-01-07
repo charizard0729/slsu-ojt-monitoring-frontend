@@ -1726,7 +1726,7 @@
             <span>Status: <b id="userTimedInStatus2" style="color:#e67e22;">-</b></span>
           </div>
           <button id="clockInBtn" onclick="startClockInProcess()" class="clock-btn" style="background:#25a55f;color:#fff;"><i class="fas fa-sign-in-alt"></i> Clock In</button>
-          <button id="clockOutBtn" onclick="startClockOutProcess()" class="clock-btn" style="background:#e74c3c;color:#fff;display:none;"><i class="fas fa-sign-out-alt"></i> Clock Out</button>
+          <button id="clockOutBtn" onclick="clockOut()" class="clock-btn" style="background:#e74c3c;color:#fff;display:none;"><i class="fas fa-sign-out-alt"></i> Clock Out</button>
           <div id="clockMessage" style="margin-top:18px;"></div>
           <div id="lastRecord" style="margin-top:20px;color:#18684b;font-size:1.07rem;"></div>
           <div id="webcamSection" style="display:none; margin-bottom:15px;">
@@ -3962,253 +3962,15 @@ async function updateClockButtons() {
   }
 }
 
-// Replace your existing clockOut() with this implementation
 async function clockOut() {
-  // Ensure function that checks if user is timed in exists
-  if (typeof getUserTimedInStatus !== 'function') {
-    console.warn('getUserTimedInStatus() not defined — defaulting to true');
-  }
-  const timedIn = typeof getUserTimedInStatus === 'function'
-    ? await getUserTimedInStatus()
-    : true;
-
-  if (!timedIn) {
-    document.getElementById('clockMessage').innerText = "Already timed out!";
-    return;
-  }
-
-  const webcamSection = document.getElementById('webcamSection');
-  const video = document.getElementById('webcamVideo');
-  const canvas = document.getElementById('webcamCanvas');
-  const capturedImg = document.getElementById('capturedPhoto');
-  const message = document.getElementById('clockMessage');
-
-  // Helper to stop camera stream
-  function stopCameraStream() {
-    try {
-      if (video && video.srcObject) {
-        video.srcObject.getTracks().forEach(t => t.stop());
-        video.srcObject = null;
-      }
-    } catch (e) { /* ignore */ }
-  }
-
-  // Show webcam UI
-  webcamSection.style.display = 'block';
-  capturedImg.style.display = 'none';
-  message.innerText = '📸 Preparing camera...';
-
-  let stream;
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({ video: true });
-  } catch (err) {
-    console.error('Camera access denied or not available', err);
-    message.innerText = '❌ Unable to access camera. Recording time-out without photo.';
-    // fallback: record timeout without photo
-    await saveClockOutLog(null).catch(e => console.error(e));
-    renderLastClockRecord?.();
-    renderClockTabRecords?.();
-    // hide webcam UI if it was shown
-    webcamSection.style.display = 'none';
-    return;
-  }
-
-  // Start video
-  video.srcObject = stream;
-  try { await video.play(); } catch (e) { /* ignore */ }
-
-  // Give user a short countdown before capture
-  let countdown = 3;
-  message.innerText = `📸 Capturing photo in ${countdown}...`;
-  const countdownInterval = setInterval(() => {
-    countdown--;
-    if (countdown > 0) {
-      message.innerText = `📸 Capturing photo in ${countdown}...`;
-    }
-  }, 1000);
-
-  // After 3s capture frame
-  setTimeout(async () => {
-    clearInterval(countdownInterval);
-
-    // draw video frame to canvas (reduce size to save storage)
-    const ctx = canvas.getContext('2d');
-    const w = 320; // desired width
-    const h = Math.round((video.videoHeight / video.videoWidth) * w) || 240;
-    canvas.width = w;
-    canvas.height = h;
-    ctx.drawImage(video, 0, 0, w, h);
-
-    // get jpeg data (quality 0.7)
-    const imageData = canvas.toDataURL('image/jpeg', 0.7);
-
-    // show captured preview
-    capturedImg.src = imageData;
-    capturedImg.style.display = 'block';
-    message.innerText = `✅ Photo captured. Saving time-out...`;
-
-    // stop camera
-    stopCameraStream();
-    webcamSection.style.display = 'none';
-
-    // Save clock-out with captured image (your backend helper)
-    try {
-      if (typeof saveClockOutLog === 'function') {
-        await saveClockOutLog(imageData);
-      } else {
-        // fallback localStorage save if no backend helper exists
-        const userId = localStorage.getItem('currentUserId') || 'guest';
-        const logs = JSON.parse(localStorage.getItem('timeLogs') || '{}');
-        if (!logs[userId]) logs[userId] = [];
-        const now = new Date();
-        logs[userId].push({ type: 'Time Out', datetime: now.toLocaleString(), image: imageData });
-        localStorage.setItem('timeLogs', JSON.stringify(logs));
-      }
-
-      message.innerText = 'Clocked out successfully!';
-      renderLastClockRecord?.();
-      renderClockTabRecords?.();
-    } catch (saveErr) {
-      console.error('Failed to save clock-out', saveErr);
-      message.innerText = '❌ Failed to save time-out. See console.';
-    }
-  }, 3000); // 3s
-}
-
-async function startClockOutProcess() {
-  // Ensure user is currently timed in
   if (!(await getUserTimedInStatus())) {
     document.getElementById('clockMessage').innerText = "Already timed out!";
     return;
   }
-
-  clockActionMode = 'out';
-  document.getElementById('webcamSection').style.display = 'block';
-  document.getElementById('clockMessage').innerText = '📸 Clock Out: Please look at the camera. Capture to complete clock out.';
-  // Hide the clockOut button while capturing to avoid duplicate actions
-  document.getElementById('clockOutBtn').style.display = 'none';
-
-  // update capture button label
-  const capBtn = document.querySelector('#webcamSection button');
-  if (capBtn) capBtn.textContent = 'Capture & Clock Out';
-
-  // Start webcam
-  navigator.mediaDevices.getUserMedia({ video: true })
-    .then(stream => {
-      webcamStream = stream;
-      const video = document.getElementById('webcamVideo');
-      video.srcObject = stream;
-    })
-    .catch(err => {
-      alert('Could not access camera: ' + err);
-      document.getElementById('webcamSection').style.display = 'none';
-      // restore button visibility
-      document.getElementById('clockOutBtn').style.display = 'inline-block';
-    });
-}
-
-// Unified capture handler used for both Clock In and Clock Out
-// (replaces previous capturePhoto implementation)
-async function capturePhoto() {
-  const video = document.getElementById('webcamVideo');
-  const canvas = document.getElementById('webcamCanvas');
-  const img = document.getElementById('capturedPhoto');
-
-  // draw current frame
-  canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
-  const photoData = canvas.toDataURL('image/png');
-  img.src = photoData;
-  img.style.display = 'block';
-
-  // Stop the webcam stream
-  if (webcamStream) {
-    webcamStream.getTracks().forEach(track => track.stop());
-  }
-  document.getElementById('webcamSection').style.display = 'none';
-
-  if (clockActionMode === 'in') {
-    // Clock In flow
-    try {
-      // Optionally show immediate feedback
-      document.getElementById('clockMessage').innerHTML = "<span style='color:#2196f3;font-weight:600;'>Saving Time In...</span>";
-      // call existing backend helper (posts new ojtlog with photo)
-      await clockInBackend(photoData);
-      // update UI
-      localStorage.setItem("userTimedIn", "true");
-      document.getElementById('userTimedInStatus').innerText = "Timed In";
-      document.getElementById('userTimedInStatus2').innerText = "Timed In";
-      document.getElementById('clockOutBtn').style.display = "inline-block";
-      document.getElementById('clockInBtn').style.display = "none";
-      document.getElementById('clockMessage').innerHTML = "<span style='color:#25a55f;font-weight:600;'>Time In recorded.</span>";
-      renderLastClockRecord();
-      renderClockTabRecords();
-    } catch (err) {
-      console.error('Clock-in save failed', err);
-      alert('Failed to save time in. Please try again.');
-      document.getElementById('clockInBtn').style.display = 'inline-block';
-      document.getElementById('clockMessage').innerText = '';
-    }
-  } else if (clockActionMode === 'out') {
-    // Clock Out flow
-    try {
-      document.getElementById('clockMessage').innerHTML = "<span style='color:#2196f3;font-weight:600;'>Saving Time Out...</span>";
-      // Call existing helper that updates latest log clockOut
-      const ok = await clockOutBackend();
-      if (ok) {
-        // store photo locally (optional) so UI can show it even if backend doesn't save it
-        try {
-          const timeStampKey = `lastClockOutPhoto_${localStorage.getItem('currentUserId') || 'guest'}`;
-          localStorage.setItem(timeStampKey, photoData);
-        } catch (e) { /* ignore storage failures */ }
-
-        localStorage.setItem("userTimedIn", "false");
-        document.getElementById('userTimedInStatus').innerText = "Timed Out";
-        document.getElementById('userTimedInStatus2').innerText = "Timed Out";
-        document.getElementById('clockMessage').innerHTML = "<span style='color:#25a55f;font-weight:600;'>Clock Out recorded.</span>";
-        renderLastClockRecord();
-        renderClockTabRecords();
-      } else {
-        throw new Error('Server failed to record clock out');
-      }
-    } catch (err) {
-      console.error('Clock-out save failed', err);
-      alert('Failed to record clock out. Please try again.');
-      // restore the clock out button so user can retry
-      document.getElementById('clockOutBtn').style.display = 'inline-block';
-      document.getElementById('clockMessage').innerText = '';
-    }
-  }
-
-  // reset mode to default 'in' after capture
-  clockActionMode = 'in';
-}
-
-async function clockOutBackend(photoData = null) {
-  const userId = localStorage.getItem("currentUserId");
-  if (!userId) return false;
-
-  // fetch logs to find the last open entry
-  const logs = await getOjtLogs(userId);
-  const lastLog = logs.find(log => log.clockIn && !log.clockOut);
-  if (!lastLog) return false;
-
-  const now = new Date().toISOString();
-
-  // include photo field in the payload if provided (the server's ojtlogs table has 'photo')
-  const payload = { clockOut: now };
-  if (photoData) payload.photo = photoData;
-
-  try {
-    const res = await fetch(`https://slsu-ojt-monitoring-system-1.onrender.com/api/ojtlogs/${lastLog.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    return res.ok;
-  } catch (err) {
-    console.error('clockOutBackend fetch error', err);
-    return false;
-  }
+  await saveClockOutLog();
+  document.getElementById('clockMessage').innerText = "Clocked out successfully!";
+  renderLastClockRecord();
+  renderClockTabRecords();
 }
 
 // Update the time
@@ -4239,20 +4001,13 @@ document.addEventListener("DOMContentLoaded", function() {
 });
 
 let webcamStream = null;
-let captureMode = 'in'; 
-let clockActionMode = 'in'; 
 
 function startClockInProcess() {
-  clockActionMode = 'in';
   // Show webcam section
   document.getElementById('webcamSection').style.display = 'block';
   document.getElementById('clockMessage').innerText = '';
   // Hide normal Clock In button to prevent double click
   document.getElementById('clockInBtn').style.display = 'none';
-
-  // adjust capture button label if present
-  const capBtn = document.querySelector('#webcamSection button');
-  if (capBtn) capBtn.textContent = 'Capture Photo';
 
   // Start webcam
   navigator.mediaDevices.getUserMedia({ video: true })
@@ -4268,21 +4023,11 @@ function startClockInProcess() {
     });
 }
 
-
 function capturePhoto() {
   const video = document.getElementById('webcamVideo');
   const canvas = document.getElementById('webcamCanvas');
   const img = document.getElementById('capturedPhoto');
-
-  try {
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-  } catch (err) {
-    console.error('Capture error', err);
-    alert('Failed to capture photo from webcam.');
-    return;
-  }
-
+  canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
   // Get data URL of the photo
   const photoData = canvas.toDataURL('image/png');
   img.src = photoData;
@@ -4291,58 +4036,21 @@ function capturePhoto() {
   // Stop the webcam stream
   if (webcamStream) {
     webcamStream.getTracks().forEach(track => track.stop());
-    webcamStream = null;
   }
+  document.getElementById('webcamSection').style.display = 'none';
 
-  // Hide webcam UI after a tiny delay so the user sees the captured image
-  setTimeout(() => {
-    document.getElementById('webcamSection').style.display = 'none';
-  }, 400);
+  // Mark the user as Timed In
+  localStorage.setItem("userTimedIn", "true");
+  document.getElementById('userTimedInStatus').innerText = "Timed In";
+  document.getElementById('userTimedInStatus2').innerText = "Timed In";
+  document.getElementById('clockOutBtn').style.display = "inline-block";
+  document.getElementById('clockInBtn').style.display = "none";
+  document.getElementById('clockMessage').innerHTML = "<span style='color:#25a55f;font-weight:600;'>Timed OK</span>";
 
-  if (clockActionMode === 'in') {
-    // Clock In flow (existing behavior)
-    localStorage.setItem("userTimedIn", "true");
-    document.getElementById('userTimedInStatus').innerText = "Timed In";
-    document.getElementById('userTimedInStatus2').innerText = "Timed In";
-    document.getElementById('clockOutBtn').style.display = "inline-block";
-    document.getElementById('clockInBtn').style.display = "none";
-    document.getElementById('clockMessage').innerHTML = "<span style='color:#25a55f;font-weight:600;'>Timed in OK</span>";
-
-    // send to backend
-    saveClockInLog(photoData).then(() => {
-      renderLastClockRecord();
-      renderClockTabRecords();
-    }).catch(err => {
-      console.warn('saveClockInLog failed', err);
-      renderLastClockRecord();
-      renderClockTabRecords();
-    });
-
-  } else if (clockActionMode === 'out') {
-    // Clock Out flow: send photo + clockOut to backend, then update UI
-    document.getElementById('clockMessage').innerText = '⏳ Saving clock out...';
-
-    clockOutBackend(photoData).then(ok => {
-      if (ok) {
-        localStorage.setItem("userTimedIn", "false");
-        document.getElementById('userTimedInStatus').innerText = "Timed Out";
-        document.getElementById('userTimedInStatus2').innerText = "Timed Out";
-        document.getElementById('clockInBtn').style.display = "inline-block";
-        document.getElementById('clockOutBtn').style.display = "none";
-        document.getElementById('clockMessage').innerHTML = "<span style='color:#25a55f;font-weight:600;'>Clocked out successfully!</span>";
-        renderLastClockRecord();
-        renderClockTabRecords();
-      } else {
-        document.getElementById('clockMessage').innerText = "❌ Clock out failed.";
-        // restore clockOut button so user can retry
-        document.getElementById('clockOutBtn').style.display = "inline-block";
-      }
-    }).catch(err => {
-      console.error('clockOutBackend error', err);
-      document.getElementById('clockMessage').innerText = "❌ Network error while clocking out.";
-      document.getElementById('clockOutBtn').style.display = "inline-block";
-    });
-  }
+  // Optionally, save photoData to localStorage or send it to a server
+  // localStorage.setItem("userClockInPhoto", photoData);
+  saveClockInLog(photoData);
+  renderLastClockRecord(); // <-- Add this line
 }
 
 async function renderLastClockRecord() {
@@ -4370,6 +4078,21 @@ async function getOjtLogs(userId = null) {
   const res = await fetch(`https://slsu-ojt-monitoring-system-1.onrender.com/api/ojtlogs/${userId}`);
   if (!res.ok) return [];
   return await res.json();
+}
+
+async function clockOutBackend() {
+  const userId = localStorage.getItem("currentUserId");
+  const logs = await getOjtLogs();
+  // Find the latest log with a clockIn but no clockOut
+  const lastLog = logs.find(log => log.clockIn && !log.clockOut);
+  if (!lastLog) return false;
+  const now = new Date().toISOString();
+  const res = await fetch(`https://slsu-ojt-monitoring-system-1.onrender.com/api/ojtlogs/${lastLog.id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ clockOut: now })
+  });
+  return res.ok;
 }
 
 async function clockInBackend(photoData) {
@@ -5017,28 +4740,57 @@ async function renderFaqs() {
   const faqsList = document.getElementById('faqsList');
   if (!faqsList) return;
 
-  // Get the currently logged in user's ID
+  // Current logged-in user id (may be null/guest)
   const currentUserId = localStorage.getItem('currentUserId');
 
-  // Filter FAQs to only those posted by the current user
-  const userFaqs = faqs.filter(faq => String(faq.userId) === String(currentUserId));
+  // Fetch students so we can determine classmates
+  let students = [];
+  try {
+    const resp = await fetch('https://slsu-ojt-monitoring-system-1.onrender.com/api/students');
+    if (resp.ok) {
+      students = await resp.json();
+    }
+  } catch (err) {
+    console.warn('Failed to fetch students for FAQ visibility:', err);
+    students = [];
+  }
 
-  if (userFaqs.length === 0) {
+  // If we have a logged-in student and can find their class, show FAQs from that class
+  let visibleFaqs = [];
+  if (currentUserId) {
+    const currentUser = students.find(s => String(s.id) === String(currentUserId));
+    if (currentUser && currentUser.classId) {
+      const classId = String(currentUser.classId);
+      // Build set of student IDs that belong to the same class
+      const classmates = students.filter(s => String(s.classId) === classId).map(s => String(s.id));
+      const classSet = new Set(classmates);
+      // Filter faqs to only those posted by students in the same class
+      visibleFaqs = faqs.filter(f => classSet.has(String(f.userId)));
+    } else {
+      // Could not determine class (cached students missing or guest) — fallback to show all FAQs
+      visibleFaqs = faqs;
+    }
+  } else {
+    // Not logged in as a student — show all faqs (or you may prefer to show none)
+    visibleFaqs = faqs;
+  }
+
+  if (!visibleFaqs || visibleFaqs.length === 0) {
     faqsList.innerHTML = "<p style='color:#888;text-align:center;'>No questions yet.</p>";
     return;
   }
 
-  faqsList.innerHTML = userFaqs.map((faq, idx) => `
+  faqsList.innerHTML = visibleFaqs.map((faq, idx) => `
     <div style="background:#f8f8f8;border-radius:1em;padding:1em;margin-bottom:1.6em;box-shadow:0 1px 6px #0001;position:relative;">
       <div style="position:absolute;top:14px;right:18px;">
-  <button class="menu-btn" onclick="toggleFaqPostMenu(${faq.id}, event)" style="background:none;border:none;cursor:pointer;font-size:1.5em;padding:0 7px;">&#x22EE;</button>
-  <div id="faq-post-menu-${faq.id}" class="comment-menu" style="display:none;position:absolute;right:0;top:28px;min-width:90px;background:#fff;border:1px solid #e0e0e0;box-shadow:0 2px 10px #0003;border-radius:8px;z-index:1000;">
-    <div onclick="editStudentFaqPost(${faq.id})" style="padding:10px 18px;cursor:pointer;font-size:1.01em;border-bottom:1px solid #eee;">Edit</div>
-    <div onclick="deleteStudentFaqPost(${faq.id})" style="padding:10px 18px;cursor:pointer;font-size:1.01em;color:#e74c3c;">Delete</div>
-  </div>
-</div>
+        <button class="menu-btn" onclick="toggleFaqPostMenu(${faq.id}, event)" style="background:none;border:none;cursor:pointer;font-size:1.5em;padding:0 7px;">&#x22EE;</button>
+        <div id="faq-post-menu-${faq.id}" class="comment-menu" style="display:none;position:absolute;right:0;top:28px;min-width:90px;background:#fff;border:1px solid #e0e0e0;box-shadow:0 2px 10px #0003;border-radius:8px;z-index:1000;">
+          <div onclick="editStudentFaqPost(${faq.id})" style="padding:10px 18px;cursor:pointer;font-size:1.01em;border-bottom:1px solid #eee;">Edit</div>
+          <div onclick="deleteStudentFaqPost(${faq.id})" style="padding:10px 18px;cursor:pointer;font-size:1.01em;color:#e74c3c;">Delete</div>
+        </div>
+      </div>
       <div style="font-size:.96em;color:#2299ee;font-weight:500;">${faq.userName || "Anonymous"}</div>
-      <div style="color:#999;font-size:.95em;margin-bottom:0.3em;">${new Date(faq.date).toLocaleString()}</div>
+      <div style="color:#999;font-size:.95em;margin-bottom:0.3em;">${faq.date ? new Date(faq.date).toLocaleString() : ''}</div>
       <div style="margin-bottom:.8em;font-size:1.11em;color:#11695c;">${faq.question}</div>
       ${faq.img ? `<img src="${faq.img}" alt="faq-img" style="max-width:160px;border-radius:0.7em;border:1px solid #ccc;box-shadow:0 1px 3px #0002;margin-bottom:10px;">` : ""}
       <div>
@@ -5047,22 +4799,23 @@ async function renderFaqs() {
 ${Array.isArray(faq.comments) && faq.comments.length ?
   faq.comments.map((comment, ci) => `
         <div style="margin:7px 0 7px 0;padding:8px 12px;background:#eafaf5;border-radius:7px;position:relative;">
-          <span style="color:#11695c;font-weight:500;">${comment.by || 'You'}</span>
-          <span style="color:#888;font-size:.97em;margin-left:6px;">${new Date(comment.timestamp).toLocaleString()}</span>
+          <span style="color:#11695c;font-weight:500;">${comment.by || 'User'}</span>
+          <span style="color:#888;font-size:.97em;margin-left:6px;">${comment.timestamp ? new Date(comment.timestamp).toLocaleString() : ''}</span>
           <div style="margin-top:3px;color:#222;">${comment.text}</div>
           <div style="position:absolute;top:8px;right:16px;">
-  <button class="menu-btn" onclick="toggleFaqCommentMenu(${faq.id},${ci},event)" style="background:none;border:none;cursor:pointer;font-size:1.5em;padding:0 7px;">&#x22EE;</button>
-  <div id="faq-comment-menu-${faq.id}-${ci}" class="comment-menu" style="display:none;position:absolute;right:0;top:28px;min-width:90px;background:#fff;border:1px solid #e0e0e0;box-shadow:0 2px 10px #0003;border-radius:8px;z-index:1000;">
-    <div onclick="editStudentFaqComment(${faq.id},${ci})" style="padding:10px 18px;cursor:pointer;font-size:1.01em;border-bottom:1px solid #eee;">Edit</div>
-    <div onclick="deleteStudentFaqComment(${faq.id},${ci})" style="padding:10px 18px;cursor:pointer;font-size:1.01em;color:#e74c3c;">Delete</div>
-  </div>
-</div>
+            <button class="menu-btn" onclick="toggleFaqCommentMenu(${faq.id},${ci},event)" style="background:none;border:none;cursor:pointer;font-size:1.5em;padding:0 7px;">&#x22EE;</button>
+            <div id="faq-comment-menu-${faq.id}-${ci}" class="comment-menu" style="display:none;position:absolute;right:0;top:28px;min-width:75px;background:#fff;border:1px solid #e0e0e0;box-shadow:0 2px 10px #0003;border-radius:8px;z-index:1000;">
+              <div onclick="editStudentFaqComment(${faq.id},${ci})" style="padding:8px 15px;cursor:pointer;font-size:0.97em;border-bottom:1px solid #eee;">Edit</div>
+              <div onclick="deleteStudentFaqComment(${faq.id},${ci})" style="padding:8px 15px;cursor:pointer;font-size:0.97em;color:#e74c3c;">Delete</div>
+            </div>
+          </div>
+        </div>
       `).join('')
   : '<div style="color:#aaa;font-size:.97em;">No comments yet.</div>'}
         </div>
         <form onsubmit="addCommentToFaq(event, ${faq.id})" style="margin-top:8px;display:flex;gap:7px;">
-          <input type="text" name="comment" placeholder="Write a comment..." style="flex:1;padding:7px 10px;border-radius:7px;border:1px solid #b2dfdb;font-size:1em;" required>
-          <button type="submit" style="padding:7px 18px;border-radius:7px;background:linear-gradient(90deg,#2299ee,#25a55f);color:#fff;border:none;font-weight:600;cursor:pointer;">Post</button>
+          <input type="text" name="comment" placeholder="Type an answer..." style="flex:1;padding:7px 10px;border-radius:7px;border:1px solid #b2dfdb;font-size:1em;" required>
+          <button type="submit" style="padding:7px 18px;border-radius:7px;background:linear-gradient(90deg,#43a047,#2299ee);color:#fff;border:none;font-weight:600;cursor:pointer;">Post</button>
         </form>
       </div>
     </div>
