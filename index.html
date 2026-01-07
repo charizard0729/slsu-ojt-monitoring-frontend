@@ -1571,6 +1571,7 @@
       <input type="email" id="studEmail" placeholder="Email" required>
       <input type="password" id="studPass" placeholder="Password" required>
     </div>
+     <div id="enrollMessage" style="margin-top:10px;color:#e74c3c;font-weight:600;display:none;"></div>
     <div class="enroll-actions">
       <button type="submit" class="enroll-btn"><i class="fas fa-plus"></i> Enroll Student</button>
       <label for="excelUpload" class="excel-label">
@@ -2554,62 +2555,104 @@ document.getElementById('studDept').addEventListener('change', function() {
 // Populate the dropdown on page load
 document.addEventListener('DOMContentLoaded', populateDepartmentDropdown);
 
-async function enrollStudent(e) {
-  e.preventDefault();
-  // ... get form values ...
-  const last = document.getElementById('studLast').value.trim();
-  const first = document.getElementById('studFirst').value.trim();
-  const middle = document.getElementById('studMiddle').value.trim();
-  const ext = document.getElementById('studExt').value.trim();
-  const dept = document.getElementById('studDept').value;
-  const id = document.getElementById('studID').value.trim();
-  const email = document.getElementById('studEmail').value.trim();
-  const password = document.getElementById('studPass').value;
-
-  if (!last || !first || !middle || !dept || !id || !email || !password) {
-    alert("Please fill in all required fields.");
-    return;
-  }
-
-  if (!currentClassId) {
-    alert("No class selected!");
-    return;
-  }
-
-  // Create student object
-  const student = {
-    last,
-    first,
-    middle,
-    ext,
-    dept,
-    studid: id,
-    email,
-    password,
-    classId: currentClassId // <-- Attach to current class!
-  };
-
-  // Send to backend
-  try {
-    const res = await fetch('https://slsu-ojt-monitoring-system-1.onrender.com/api/students', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(student)
-    });
-    const data = await res.json();
-    if (res.ok) {
-      alert('Student enrolled!');
-      document.getElementById('enrollStudentForm').reset();
-      if (typeof renderStudentListTab === "function") {
-        renderStudentListTab();
-      }
-    } else {
-      alert('Error: ' + (data.error || 'Could not enroll student'));
+function isValidStudentPassword(pwd) {
+      // Minimum 8 characters and at least one special character
+      // Adjust special character set as needed.
+      const re = /^(?=.*[!@#$%^&*(),.?":{}|<>~`_+\-=[\]\\;'/|]).{8,}$/;
+      return re.test(pwd || '');
     }
-  } catch (err) {
-    alert('Network error: ' + err.message);
-  }
-}
+
+    // Clear inline message when user types password
+    const studPassInput = document.getElementById && document.getElementById('studPass');
+    if (studPassInput) {
+      studPassInput.addEventListener('input', () => {
+        const msg = document.getElementById('enrollMessage');
+        if (msg) { msg.style.display = 'none'; msg.textContent = ''; }
+      });
+    }
+
+
+async function enrollStudent(e) {
+      e.preventDefault();
+      // --- gather form values ---
+      const last = document.getElementById('studLast').value.trim();
+      const first = document.getElementById('studFirst').value.trim();
+      const middle = document.getElementById('studMiddle').value.trim();
+      const ext = document.getElementById('studExt').value.trim();
+      const dept = document.getElementById('studDept').value;
+      const id = document.getElementById('studID').value.trim();
+      const email = document.getElementById('studEmail').value.trim();
+      const password = document.getElementById('studPass').value || '';
+
+      const msgEl = document.getElementById('enrollMessage');
+      if (msgEl) { msgEl.style.display = 'none'; msgEl.textContent = ''; }
+
+      // Basic required fields check
+      if (!last || !first || !middle || !dept || !id || !email || !password) {
+        if (msgEl) { msgEl.style.display = 'block'; msgEl.textContent = 'Please fill in all required fields.'; }
+        else alert('Please fill in all required fields.');
+        return;
+      }
+
+      // Password policy: at least 8 chars and at least one special character
+      if (!isValidStudentPassword(password)) {
+        if (msgEl) {
+          msgEl.style.display = 'block';
+          msgEl.style.color = '#e74c3c';
+          msgEl.textContent = 'Password must be at least 8 characters and include at least one special character.';
+        } else {
+          alert('Password must be at least 8 characters and include at least one special character.');
+        }
+        return;
+      }
+
+      // Ensure a class is selected
+      if (!currentClassId) {
+        if (msgEl) { msgEl.style.display = 'block'; msgEl.style.color = '#e67e22'; msgEl.textContent = 'No class selected! Please open a class dashboard first.'; }
+        else alert('No class selected!');
+        return;
+      }
+
+      // Create student object
+      const student = {
+        last,
+        first,
+        middle,
+        ext,
+        dept,
+        studid: id,
+        email,
+        password,
+        classId: currentClassId // <-- Attach to current class!
+      };
+
+      // Send to backend
+      try {
+        const res = await fetch('https://slsu-ojt-monitoring-system-1.onrender.com/api/students', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(student)
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          // success UI
+          if (msgEl) { msgEl.style.display = 'block'; msgEl.style.color = '#25a55f'; msgEl.textContent = 'Student enrolled successfully.'; }
+          document.getElementById('enrollStudentForm').reset();
+          // optionally refresh student list
+          if (typeof renderStudentListTab === "function") {
+            await renderStudentListTab();
+          }
+        } else {
+          // show server-returned error
+          const errMsg = data.error || data.message || 'Could not enroll student';
+          if (msgEl) { msgEl.style.display = 'block'; msgEl.style.color = '#e74c3c'; msgEl.textContent = 'Error: ' + errMsg; }
+          else alert('Error: ' + errMsg);
+        }
+      } catch (err) {
+        if (msgEl) { msgEl.style.display = 'block'; msgEl.style.color = '#e74c3c'; msgEl.textContent = 'Network error: ' + err.message; }
+        else alert('Network error: ' + err.message);
+      }
+    }
 
 async function renderStudentListTab() {
   const studentTableDiv = document.getElementById('studentTableScroll');
